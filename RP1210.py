@@ -1,16 +1,17 @@
-from PyQt5.QtWidgets import QMessageBox, QInputDialog
-from PyQt5.QtCore import Qt, QCoreApplication
+from PyQt5.QtWidgets import QMessageBox, QInputDialog,QMainWindow
+from PyQt5.QtCore import Qt, QCoreApplication, QTimer
 # Use ctypes to import the RP1210 DLL
 from ctypes import *
 from ctypes.wintypes import HWND
 import json
 import os
 import threading
+import queue
 import time
 import struct
 import traceback
 from RP1210Functions import *
-from UserData import get_storage_path
+from RP1210Select import *
 import logging
 logger = logging.getLogger(__name__)
 
@@ -23,11 +24,11 @@ class RP1210ReadMessageThread(threading.Thread):
     nClientID - this lets us know which network is being used to receive the
                 messages. This will likely be a 1 or 2'''
 
-    def __init__(self, parent, rx_queue, extra_queue, RP1210_ReadMessage, nClientID, protocol, title, filename="NetworkTraffic"):
+    def __init__(self, parent, rx_queue, RP1210_ReadMessage, nClientID, protocol, filename="NetworkTraffic"):
         threading.Thread.__init__(self)
         self.root = parent
         self.rx_queue = rx_queue
-        self.extra_queue = extra_queue
+
         self.RP1210_ReadMessage = RP1210_ReadMessage
         self.nClientID = nClientID
         self.runSignal = True
@@ -71,25 +72,6 @@ class RP1210ReadMessageThread(threading.Thread):
                             can_data = ucTxRxBuffer[8:return_value]
                             dlc = int(return_value - 8)
                         
-                        # #the following conversion is to emulate the data structure from the NMFTA CAN Logger Project
-                        # # See https://github.com/Heavy-Vehicle-Networking-At-U-Tulsa/NMFTA-CAN-Logger/tree/master/_07_Low_Latency_Logger_with_Requests
-                        # try:
-                        #     microsecond_bytes = struct.pack("<L", int((dlc << 24) + (current_time % 1) * 1000000))
-                        # except struct.error:
-                        #     continue
-                        # # RP1210_ReadMessage API:
-                        # #Reverse endianess
-                        # #vda_timestamp = struct.pack("<L",struct.unpack(">L",ucTxRxBuffer[0:4])[0])  
-                        
-                        
-                        # #echo_byte = ucTxRxBuffer[4]
-                        
-                        # # Build the 24 bytes that make up a CAN message.
-                        # message_bytes = time_bytes
-                        # message_bytes += vda_timestamp
-                        # message_bytes += microsecond_bytes
-                        # message_bytes += can_id
-                        # message_bytes += can_data
                         self.rx_queue.put( (current_time, vda_timestamp, can_id, dlc, can_data) )
                         
 
@@ -679,3 +661,108 @@ class RP1210Class():
         message_window.setText(message)
         message_window.exec_()
 
+class StandAlone(QMainWindow):
+    def __init__(self):
+        super(StandAlone, self).__init__()
+        self.run()
+        read_timer = QTimer(self)
+        read_timer.timeout.connect(self.read_rp1210)
+        read_timer.start(100) #milliseconds
+    """
+    Use this function to test the basic functionality.
+    """
+    def run(self):
+        #Parse the INI file
+        selection = SelectRP1210("RP1210 Demo")
+        selection.show_dialog()
+     
+        dll_name = selection.dll_name
+        protocol = selection.protocol
+        deviceID = selection.deviceID
+        speed    = selection.speed    
+                    
+        # Once an RP1210 DLL is selected, we can connect to it using the RP1210 helper file.
+        RP1210 = RP1210Class(dll_name)
+      
+        # We can connect to multiple clients with different protocols.
+        self.client_id = RP1210.get_client_id(protocol, deviceID, "{}".format(speed))
+        logger.debug('Client IDs: {}'.format(self.client_id))
+        if self.client_id is None:
+            print("No Client ID. Check drivers and hardware connections.")
+        
+        # By turning on Echo Mode, our logger process can record sent messages as well as received.
+        fpchClientCommand = (c_char*8192)()
+        fpchClientCommand[0] = 1 #Echo mode on
+        return_value = RP1210.SendCommand(c_short(RP1210_Echo_Transmitted_Messages), 
+                                          c_short(self.client_id), 
+                                          byref(fpchClientCommand), 1)
+        logger.debug('RP1210_Echo_Transmitted_Messages returns {:d}: {}'.format(return_value,RP1210.get_error_code(return_value)))
+        
+        #Set all filters to pass
+        return_value = RP1210.SendCommand(c_short(RP1210_Set_All_Filters_States_to_Pass), 
+                                          c_short(self.client_id),
+                                          None, 0)
+        if return_value == 0:
+            logger.debug("RP1210_Set_All_Filters_States_to_Pass for {} is successful.".format(protocol))
+            #setup a Receive queue. This keeps the GUI responsive and enables messages to be received.
+            self.rx_queue = queue.Queue(100000)
+            read_message_thread = RP1210ReadMessageThread(self, 
+                                                          self.rx_queue,
+                                                          RP1210.ReadMessage, 
+                                                          self.client_id,
+                                                          protocol)
+            read_message_thread.setDaemon(True) #needed to close the thread when the application closes.
+            read_message_thread.start()
+            logger.debug("Started RP1210ReadMessage Thread.")
+
+        else :
+            logger.debug('RP1210_Set_All_Filters_States_to_Pass returns {:d}: {}'.format(return_value,RP1210.get_error_code(return_value)))
+            logger.debug("{} Client not connected for All Filters to pass. No Queue will be set up.".format(protocol))
+            
+
+        if protocol == "J1939":
+            #Set J1939 Interpacket Transport layer timing
+            fpchClientCommand[0] = 0x00 #0 = as fast as possible milliseconds
+            fpchClientCommand[1] = 0x00
+            fpchClientCommand[2] = 0x00
+            fpchClientCommand[3] = 0x00
+            return_value = RP1210.SendCommand(c_short(RP1210_Set_J1939_Interpacket_Time), 
+                                                   c_short(self.client_id), 
+                                                   byref(fpchClientCommand), 4)
+            logger.debug('RP1210_Set_J1939_Interpacket_Time returns {:d}: {}'.format(return_value,RP1210.get_error_code(return_value)))
+            
+            # Set J1939 Address Claiming
+            fpchClientCommand[0] = 0xF9 # Source Address for the offboard diagnostics service tool #1
+            fpchClientCommand[1] = 1 #LSB of the Identity field
+            fpchClientCommand[2] = 2 #2nd byte of the identity field
+            fpchClientCommand[3] = 3 #MSB of the identity field, LSB of the manufacturer code
+            fpchClientCommand[4] = 4 #MSB of the Manufacturer code
+            fpchClientCommand[5] = 5 #Functionm instance, ECU Instance
+            fpchClientCommand[6] = 6 #Function
+            fpchClientCommand[7] = 7 #Vehicle System
+            fpchClientCommand[8] = 8 #Arbitrary address capable, industry group, vehcicle system instance
+            fpchClientCommand[9] = 0x02 # Return before completion
+            
+            return_value = RP1210.SendCommand(c_short(RP1210_Protect_J1939_Address), 
+                                                   c_short(self.client_id), 
+                                                   byref(fpchClientCommand), 10)
+            message = 'RP1210_Protect_J1939_Address returns {:d}: {}'.format(return_value,RP1210.get_error_code(return_value))
+            logger.debug(message)
+        self.show()
+        
+    def read_rp1210(self):
+        # This function needs to run often to keep the queues from filling
+        #try:
+        while self.rx_queue.qsize():
+            #Get a message from the queue. These are raw bytes
+            rxmessage = self.rx_queue.get()
+            print(rxmessage)
+
+if __name__ == '__main__':        
+    app = QCoreApplication.instance()
+    if app is None:
+        app = QApplication(sys.argv)
+    else:
+        app.close()
+    dialog = StandAlone()
+    sys.exit(app.exec_())

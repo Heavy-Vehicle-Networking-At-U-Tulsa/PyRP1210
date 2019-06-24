@@ -16,8 +16,10 @@ import json
 import configparser
 import traceback
 import logging
-from UserData import get_storage_path
 logger = logging.getLogger(__name__)
+
+def get_storage_path():
+    return os.getcwd()
 
 class SelectRP1210(QDialog):
     """
@@ -31,11 +33,11 @@ class SelectRP1210(QDialog):
             self.apis = sorted(RP1210_config["RP1210Support"]["apiimplementations"].split(","))
             self.current_api_index = 0
             logger.debug("Current RP1210 APIs installed are: " + ", ".join(self.apis))
-            self.rp1201_missing = False
+            self.rp1210_missing = False
         except:
             logger.warning(traceback.format_exc())
             QMessageBox.warning(self,"No RP1210 Device","The RP121032.ini file was not found. Please install an RP1210 compliant Vehicle Diagnostics adatper.")
-            self.rp1201_missing = True
+            self.rp1210_missing = True
             return
         storage = get_storage_path()
         self.selection_filename = os.path.join(storage,"RP1210_selection.txt")
@@ -53,7 +55,7 @@ class SelectRP1210(QDialog):
             self.deviceID = file_contents["deviceID"]
             self.speed    = file_contents["speed"]
         except:
-            logger.warning(traceback.format_exc())
+            logger.debug(traceback.format_exc())
             self.dll_name = False
             self.protocol = False
             self.deviceID = False
@@ -64,7 +66,7 @@ class SelectRP1210(QDialog):
         self.exec_()
 
     def setup_dialog(self):
-        if self.rp1201_missing:
+        if self.rp1210_missing:
             return
         vendor_label = QLabel("System RP1210 Vendors:")
         self.vendor_combo_box = QComboBox()
@@ -123,7 +125,7 @@ class SelectRP1210(QDialog):
         self.setLayout(self.v_layout)
 
     def fill_vendor(self):
-        if self.rp1201_missing:
+        if self.rp1210_missing:
             return
         self.vendor_combo_box.clear()
         self.vendor_configs = {}
@@ -158,7 +160,7 @@ class SelectRP1210(QDialog):
             logger.debug("There are no entries in the RP1210 Vendor's ComboBox.")
 
     def fill_device(self):
-        if self.rp1201_missing:
+        if self.rp1210_missing:
             return
         self.api_string = self.vendor_combo_box.currentText().split("-")[0].strip()
         self.device_combo_box.clear()
@@ -201,7 +203,7 @@ class SelectRP1210(QDialog):
         self.fill_protocol()
 
     def fill_protocol(self):
-        if self.rp1201_missing:
+        if self.rp1210_missing:
             return
         self.protocol_combo_box.clear()
         self.speed_combo_box.clear()
@@ -247,7 +249,7 @@ class SelectRP1210(QDialog):
         self.fill_speed()
 
     def fill_speed(self):
-        if self.rp1201_missing:
+        if self.rp1210_missing:
             return
         self.speed_combo_box.clear()
         if self.protocol_combo_box.currentText() == "":
@@ -263,7 +265,7 @@ class SelectRP1210(QDialog):
             logger.warning(traceback.format_exc())
 
     def connect_RP1210(self):
-        if self.rp1201_missing:
+        if self.rp1210_missing:
             return
         logger.debug("Accepted Dialog OK")
         vendor_index = self.vendor_combo_box.currentIndex()
@@ -284,9 +286,6 @@ class SelectRP1210(QDialog):
         self.deviceID = None
         self.speed = None
 
-class Standalone(QMainWindow):
-    def __init__(self):
-        super(Standalone, self).__init__()
         
 
 
@@ -294,9 +293,6 @@ if __name__ == '__main__':
     """
     Use this function to test the basic functionality.
     """
-    with open("logging.config.json",'r') as f:
-        logging_dictionary = json.load(f)
-        logging.config.dictConfig(logging_dictionary)
     app = QCoreApplication.instance()
     if app is None:
         app = QApplication(sys.argv)

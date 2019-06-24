@@ -112,3 +112,4 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+RP1210_selection.txt

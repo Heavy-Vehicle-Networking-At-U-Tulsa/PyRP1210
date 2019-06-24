@@ -41,7 +41,7 @@ def get_local_time_string(ts):
     return time.strftime("%A, %d %b %Y at %H:%M:%S %Z", time.localtime(ts))
 
 
-# A file with constants useful for RP1210 accplications
+# A file with constants useful for RP1210 applications
 
 # RP1210B   RP1210_SendCommand Defines (From RP1210B Document)
 RP1210_Reset_Device                          = 0
