@@ -10,7 +10,7 @@ Run with `python demo_PyRP1210.py`  (which needs to be created still)
 
 ## Description
 
-Add something here
+An RP1210 library for python
 
 
 ### Packaging
