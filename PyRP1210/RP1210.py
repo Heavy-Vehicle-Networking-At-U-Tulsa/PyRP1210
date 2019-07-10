@@ -10,8 +10,8 @@ import queue
 import time
 import struct
 import traceback
-from RP1210Functions import *
-from RP1210Select import *
+from PyRP1210.RP1210Functions import *
+from PyRP1210.RP1210Select import *
 import logging
 logger = logging.getLogger(__name__)
 
