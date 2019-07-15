@@ -18,9 +18,6 @@ import traceback
 import logging
 logger = logging.getLogger(__name__)
 
-def get_storage_path():
-    return os.getcwd()
-
 class SelectRP1210(QDialog):
     """
     A Qt dialog box that parses the RP1210 ini files to enable a user to select the RP1210 device. 
@@ -39,7 +36,7 @@ class SelectRP1210(QDialog):
             QMessageBox.warning(self,"No RP1210 Device","The RP121032.ini file was not found. Please install an RP1210 compliant Vehicle Diagnostics adatper.")
             self.rp1210_missing = True
             return
-        storage = get_storage_path()
+        storage = self.get_storage_path()
         self.selection_filename = os.path.join(storage,"RP1210_selection.txt")
         self.connections_file = os.path.join(storage,"Last_RP1210_Connection.json")
         
@@ -61,7 +58,15 @@ class SelectRP1210(QDialog):
             self.deviceID = False
             self.speed = False
         
-    
+    def get_storage_path(self):
+        try:
+            storage = os.path.join(os.getenv('LOCALAPPDATA'), "RP1210" )
+            if not os.path.isdir(storage):
+                os.makedirs(storage)
+            return storage
+        except:
+            return os.getcwd()
+
     def show_dialog(self):
         self.exec_()
 
@@ -279,7 +284,15 @@ class SelectRP1210(QDialog):
         self.deviceID = int(self.device_combo_box.itemText(device_index).split(":")[0].strip())
         self.speed = self.speed_combo_box.itemText(speed_index)
         self.protocol = self.protocol_combo_box.itemText(protocol_index).split(":")[0].strip()
-
+        
+        file_contents = {}
+        file_contents["dll_name"] = self.dll_name
+        file_contents["protocol"] = self.protocol
+        file_contents["deviceID"] = self.deviceID
+        file_contents["speed"]    = self.speed
+        with open(self.connections_file,"w") as rp1210_file:
+            file_contents = json.dump(file_contents, rp1210_file)
+            
     def reject_RP1210(self):
         self.dll_name = None
         self.protocol = None
@@ -298,7 +311,8 @@ if __name__ == '__main__':
         app = QApplication(sys.argv)
     else:
         app.close()
-    dialog = SelectRP1210("TruckCrypt_test")
+    dialog = SelectRP1210("Select RP1210 Test")
     dialog.show_dialog()  
     sys.exit(app.exec_())
+    print("Finished Selecting RP1210")
         

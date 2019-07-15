@@ -4,7 +4,6 @@ import string
 import logging
 logger = logging.getLogger(__name__)
 
-
 def get_printable_chars(data_bytes):
     return ''.join([x if x in string.printable else '' for x in data_bytes.decode('ascii','ignore')])
 

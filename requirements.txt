@@ -1,2 +1,2 @@
 setuptools==40.8.0
-PyQt5==5.12.3
+PyQt5=>5.12.3

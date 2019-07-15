@@ -37,7 +37,7 @@ class RP1210ReadMessageThread(threading.Thread):
         self.duration = 0
         self.filename = os.path.join(get_storage_path(), protocol + filename + ".bin")
         self.protocol = protocol
-        self.pgns_to_block=[61444, 61443, 65134, 65215]
+        self.pgns_to_block=[]
         self.sources_to_block=[0, 11]
         self.can_ids_to_block = []
         
@@ -91,9 +91,7 @@ class RP1210ReadMessageThread(threading.Thread):
                         if pgn == 0xDA00:
                             dst_addr = struct.unpack("B",ucTxRxBuffer[10])[0]
                             message_data = ucTxRxBuffer[11:return_value]
-                            self.extra_queue.put((pgn, 6, sa, dst_addr, message_data))
-
-                    
+                            self.extra_queue.put((pgn, 6, sa, dst_addr, message_data)) 
         logger.debug("RP1210 Receive Thread is finished.")
 
     def make_log_data(self,message_bytes,return_value,time_bytes,ucTxRxBuffer):
@@ -661,25 +659,22 @@ class RP1210Class():
         message_window.setText(message)
         message_window.exec_()
 
-class StandAlone(QMainWindow):
+class StandAlone():
     def __init__(self):
-        super(StandAlone, self).__init__()
         self.run()
-        read_timer = QTimer(self)
-        read_timer.timeout.connect(self.read_rp1210)
-        read_timer.start(100) #milliseconds
+        for i in range(100):
+            self.read_rp1210()
+            time.sleep(0.1)
+            
     """
     Use this function to test the basic functionality.
     """
     def run(self):
-        #Parse the INI file
-        selection = SelectRP1210("RP1210 Demo")
-        selection.show_dialog()
-     
-        dll_name = selection.dll_name
-        protocol = selection.protocol
-        deviceID = selection.deviceID
-        speed    = selection.speed    
+            
+        dll_name = "DGDPA5MA"
+        protocol = "J1939"
+        deviceID = 2
+        speed    = "Auto"   
                     
         # Once an RP1210 DLL is selected, we can connect to it using the RP1210 helper file.
         RP1210 = RP1210Class(dll_name)
@@ -748,7 +743,7 @@ class StandAlone(QMainWindow):
                                                    byref(fpchClientCommand), 10)
             message = 'RP1210_Protect_J1939_Address returns {:d}: {}'.format(return_value,RP1210.get_error_code(return_value))
             logger.debug(message)
-        self.show()
+        
         
     def read_rp1210(self):
         # This function needs to run often to keep the queues from filling
@@ -759,10 +754,4 @@ class StandAlone(QMainWindow):
             print(rxmessage)
 
 if __name__ == '__main__':        
-    app = QCoreApplication.instance()
-    if app is None:
-        app = QApplication(sys.argv)
-    else:
-        app.close()
-    dialog = StandAlone()
-    sys.exit(app.exec_())
+    StandAlone()
